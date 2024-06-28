@@ -20,4 +20,4 @@ class Reservacion(models.Model):
     check_out = models.DateTimeField()
 
     def __str__(self):
-        return f'Reservation {self.id} by {self.user.username}'
+        return f'Reservacion {self.id} por {self.user.username}'

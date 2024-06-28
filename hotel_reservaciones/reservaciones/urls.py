@@ -3,8 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import RoomViewSet, ReservationViewSet, estadisticas_de_reserva
 
 router = DefaultRouter()
-router.register(r'rooms', RoomViewSet)
-router.register(r'reservations', ReservationViewSet)
+router.register(r'Habitaciones', RoomViewSet)
+router.register(r'Reservaciones', ReservationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
