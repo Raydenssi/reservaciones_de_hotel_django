@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    {% load static %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reservaciones de Hotel</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Reservaciones de Hotel</h1>
+            <nav>
+                <ul>
+                    <li><a href="{% url 'index' %}">Inicio</a></li>
+                    <li><a href="#">Habitaciones</a></li>
+                    <li><a href="#">Lista de Habitaciones</a></li>
+                    <li><a href="#">Iniciar Sesión</a></li>
+                    <li><a href="#">Registrarse</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    <main>
+        <div class="container">
+            <section class="search">
+                <h2>Buscar Habitaciones</h2>
+                <form id="search-form">
+                    <input type="text" id="search-input" placeholder="Buscar por tipo de habitación...">
+                    <button type="submit">Buscar</button>
+                </form>
+            </section>
+            <section class="rooms">
+                <h2>Habitaciones Disponibles</h2>
+                <ul id="rooms-list">
+                    <!-- Lista de habitaciones será llenada con JavaScript -->
+                </ul>
+            </section>
+        </div>
+    </main>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const roomsList = document.getElementById('rooms-list');
+            const searchForm = document.getElementById('search-form');
+            const searchInput = document.getElementById('search-input');
+
+            function fetchRooms(query = '') {
+                fetch(`/api/rooms/?search=${query}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        roomsList.innerHTML = '';
+                        data.forEach(room => {
+                            const li = document.createElement('li');
+                            li.className = 'room-item';
+                            li.innerHTML = `
+                                <h3>Habitación ${room.room_number} - ${room.room_type}</h3>
+                                <p>${room.description}</p>
+                                <p>Precio por noche: $${room.price_per_night}</p>
+                            `;
+                            roomsList.appendChild(li);
+                        });
+                    })
+                    .catch(error => console.error('Error fetching rooms:', error));
+            }
+
+            searchForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+                const query = searchInput.value;
+                fetchRooms(query);
+            });
+
+            fetchRooms();
+        });
+    </script>
+</body>
+</html>

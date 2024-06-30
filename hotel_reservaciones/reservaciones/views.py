@@ -1,29 +1,70 @@
 import datetime
-from rest_framework import viewsets
-from .models import Habitacion, Reservacion
-from .serializers import RoomSerializer, ReservationSerializer
+from rest_framework import viewsets, status
+from .models import Room, Reservation
+from .serializers import RoomSerializer, ReservationSerializer, UserSerializer
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
+from django.shortcuts import render, get_object_or_404
+from rest_framework.authtoken.models import Token
+from django.contrib.auth.models import User
+from rest_framework.authentication import TokenAuthentication
 
 class RoomViewSet(viewsets.ModelViewSet):
-    queryset = Habitacion.objects.all()
+    queryset = Room.objects.all()
     serializer_class = RoomSerializer
     permission_classes = [IsAuthenticated]
 
 class ReservationViewSet(viewsets.ModelViewSet):
-    queryset = Reservacion.objects.all()
+    queryset = Reservation.objects.all()
     serializer_class = ReservationSerializer
     permission_classes = [IsAuthenticated]
 
-@api_view(['GET'])
-def estadisticas_de_reserva(request):
-    total_habitaciones = Habitacion.objects.count()
-    habitaciones_ocupadas = Reservacion.objects.filter(check_out__gte=datetime.now()).count()
-    porcentaje_de_ocupacion = habitaciones_ocupadas / total_habitaciones * 100
+def index(request):
+    return render(request, 'index.html')
+
+@api_view(['POST'])
+def login(request):
+
+    user = get_object_or_404(User, username=request.data['username'])
+
+    if not user.check_password(request.data['password']):
+        return Response({'error': 'Invalid password'}, status=status.HTTP_400_BAD_REQUEST)
+
+    token, created = Token.objects.get_or_create(user=user)
+    serializer = UserSerializer(instance=user)
+
+    return Response({"token": token.key, "user": serializer.data}, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+def register(request):
+    serializer = UserSerializer(data=request.data)
+
+    if serializer.is_valid():
+        serializer.save()
+
+        user = User.objects.get(username=serializer.data['username'])
+        user.set_password(serializer.data['password'])
+        user.save()
+
+        token = Token.objects.create(user=user)
+        return Response({'token': token.key, "user": serializer.data}, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def profile(request):
+
+    return Response("Usuario {}".format(request.user.username), status=status.HTTP_200_OK)
+
+def occupancy_statistics(request):
+    total_rooms = Room.objects.count()
+    occupied_rooms = Reservation.objects.filter(check_out__gte=datetime.now()).count()
+    occupancy_rate = occupied_rooms / total_rooms * 100
 
     return Response({
-        'total_habitaciones': total_habitaciones,
-        'habitaciones_ocupadas': habitaciones_ocupadas,
-        'porcentaje_de_ocupacion': porcentaje_de_ocupacion,
+        'total_rooms': total_rooms,
+        'occupied_rooms': occupied_rooms,
+        'occupancy_rate': occupancy_rate,
     })
