@@ -1,0 +1,20 @@
+{% extends 'index.html' %} {% load static %} {% block title %}Perfil de Usuario{% endblock %} {% block content %}
+<div class="container mx-auto p-5 bg-white shadow-xl mt-10 rounded">
+    <h2 class="text-2xl font-bold mb-4 text-primary">Editar Perfil</h2>
+    <form method="POST" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-4">
+            {{ u_form.as_p }}
+        </div>
+        <div class="mb-4">
+            {{ p_form.as_p }}
+        </div>
+        <div class="mb-4">
+            {% if request.user.profile.profile_picture %}
+            <img src="{{ request.user.profile.profile_picture.url }}" alt="Imagen de perfil" class="rounded-full w-32 h-32"> {% else %}
+            <img src="{% static 'images/default_profile_picture.jpg' %}" alt="Imagen de perfil por defecto" class="rounded-full w-32 h-32"> {% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary">Actualizar</button>
+    </form>
+</div>
+{% endblock %}

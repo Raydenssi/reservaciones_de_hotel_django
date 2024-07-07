@@ -1,14 +1,18 @@
-import datetime
-from rest_framework import viewsets, status
-from .models import Room, Reservation
-from .serializers import RoomSerializer, ReservationSerializer, UserSerializer
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import login, authenticate, logout
+from django.views.generic import View, CreateView, UpdateView, ListView, DeleteView
+from django.contrib.auth.mixins import LoginRequiredMixin
+from .forms import ReservationForm, RoomForm, CustomUserCreationForm, LoginForm, UserUpdateForm, ProfileUpdateForm
+from .models import Room, Reservation, Profile
+from .serializers import RoomSerializer, ReservationSerializer
+from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.shortcuts import render, get_object_or_404
-from rest_framework.authtoken.models import Token
-from django.contrib.auth.models import User
-from rest_framework.authentication import TokenAuthentication
+import datetime
+from django.urls import reverse_lazy
+from django.db import transaction
 
 class RoomViewSet(viewsets.ModelViewSet):
     queryset = Room.objects.all()
@@ -23,48 +27,121 @@ class ReservationViewSet(viewsets.ModelViewSet):
 def index(request):
     return render(request, 'index.html')
 
-@api_view(['POST'])
-def login(request):
+class CustomLoginView(View):
+    template_name = 'accounts/login.html'
 
-    user = get_object_or_404(User, username=request.data['username'])
+    def get(self, request):
+        form = LoginForm()
+        return render(request, self.template_name, {'form': form})
 
-    if not user.check_password(request.data['password']):
-        return Response({'error': 'Invalid password'}, status=status.HTTP_400_BAD_REQUEST)
+    def post(self, request):
+        form = LoginForm(request.POST)
+        if form.is_valid():
+            username = form.cleaned_data.get('username')
+            password = form.cleaned_data.get('password')
+            user = authenticate(request, username=username, password=password)
+            if user:
+                if not hasattr(user, 'profile'):
+                    Profile.objects.create(user=user)
+                login(request, user)
+                return redirect('index')
+            else:
+                return render(request, self.template_name, {
+                    'form': form,
+                    'error_message': 'Usuario o contraseña incorrectos.'
+                })
+        return render(request, self.template_name, {'form': form})
 
-    token, created = Token.objects.get_or_create(user=user)
-    serializer = UserSerializer(instance=user)
+class CustomLogoutView(View):
+    def get(self, request):
+        logout(request)
+        return redirect('login')
 
-    return Response({"token": token.key, "user": serializer.data}, status=status.HTTP_200_OK)
+class CustomSignupView(View):
+    def get(self, request):
+        form = CustomUserCreationForm()
+        return render(request, 'accounts/register.html', {'form': form})
 
-@api_view(['POST'])
-def register(request):
-    serializer = UserSerializer(data=request.data)
+    def post(self, request):
+        form = CustomUserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            Profile.objects.create(user=user)
+            return redirect('login')
+        return render(request, 'accounts/register.html', {'form': form})
 
-    if serializer.is_valid():
-        serializer.save()
-
-        user = User.objects.get(username=serializer.data['username'])
-        user.set_password(serializer.data['password'])
-        user.save()
-
-        token = Token.objects.create(user=user)
-        return Response({'token': token.key, "user": serializer.data}, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['POST'])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
+@login_required
 def profile(request):
+    if request.method == 'POST':
+        u_form = UserUpdateForm(request.POST, instance=request.user)
+        p_form = ProfileUpdateForm(request.POST, request.FILES, instance=request.user.profile)
+        if u_form.is_valid() and p_form.is_valid():
+            u_form.save()
+            p_form.save()
+            return redirect('profile')
+    else:
+        u_form = UserUpdateForm(instance=request.user)
+        p_form = ProfileUpdateForm(instance=request.user.profile)
 
-    return Response("Usuario {}".format(request.user.username), status=status.HTTP_200_OK)
+    context = {
+        'u_form': u_form,
+        'p_form': p_form
+    }
 
+    return render(request, 'accounts/perfil.html', context)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def occupancy_statistics(request):
     total_rooms = Room.objects.count()
-    occupied_rooms = Reservation.objects.filter(check_out__gte=datetime.now()).count()
-    occupancy_rate = occupied_rooms / total_rooms * 100
-
+    occupied_rooms = Reservation.objects.filter(check_out__gte=datetime.datetime.now()).count()
+    occupancy_rate = (occupied_rooms / total_rooms) * 100 if total_rooms > 0 else 0
     return Response({
         'total_rooms': total_rooms,
         'occupied_rooms': occupied_rooms,
         'occupancy_rate': occupancy_rate,
     })
+
+class RoomListView(LoginRequiredMixin, ListView):
+    model = Room
+    template_name = 'rooms/room_list.html'
+    context_object_name = 'rooms'
+
+class RoomCreateView(LoginRequiredMixin, CreateView):
+    model = Room
+    form_class = RoomForm
+    template_name = 'rooms/room_form.html'
+    success_url = reverse_lazy('rooms_list')
+
+class RoomUpdateView(LoginRequiredMixin, UpdateView):
+    model = Room
+    form_class = RoomForm
+    template_name = 'rooms/room_form.html'
+    success_url = reverse_lazy('rooms_list')
+
+class RoomDeleteView(LoginRequiredMixin, DeleteView):
+    model = Room
+    template_name = 'rooms/room_confirm_delete.html'
+    success_url = reverse_lazy('rooms_list')
+    
+    
+
+@login_required
+def make_reservation(request, room_id):
+    room = get_object_or_404(Room, id=room_id)
+    if request.method == 'POST':
+        form = ReservationForm(request.POST)
+        if form.is_valid():
+            reservation = form.save(commit=False)
+            reservation.user = request.user
+            reservation.room = room
+            reservation.save()
+            return redirect('rooms_list')
+    else:
+        form = ReservationForm(initial={'room': room})
+    return render(request, 'reservas/make_reservation.html', {'form': form, 'room': room})
+
+class ReservationListView(LoginRequiredMixin, ListView):
+    model = Reservation
+    template_name = 'reservas/list_reservations.html'
+    context_object_name = 'reservations'
